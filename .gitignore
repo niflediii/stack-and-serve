@@ -3,7 +3,8 @@
 .next-runtime
 node_modules
 .env.local
+.vercel
 .agents
+.git-broken-backup
 *.log
 .codex-dev.log
-
