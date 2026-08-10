@@ -2,9 +2,12 @@
 .next-old
 .next-runtime
 node_modules
+.env
 .env.local
-.vercel
+.env.*.local
+!.env.example
 .agents
 .git-broken-backup
 *.log
 .codex-dev.log
+.vercel

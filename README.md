@@ -39,6 +39,8 @@ Stack & Serve is a full-stack pickleball queue and stacking app built with Next.
 
 ## Local setup
 
+Recommended runtime: Node.js 24.x
+
 1. Install dependencies
 
 ```bash
@@ -131,7 +133,7 @@ In Supabase Auth URL settings:
 This repo is already set up to build on Vercel with:
 
 - a passing `npm run build`
-- a Node version pinned through `package.json` and `.nvmrc`
+- a Node 24.x runtime pinned through `package.json` and `.nvmrc`
 - public and server env values documented in `.env.example`
 
 ### Deploy checklist
@@ -182,4 +184,3 @@ This confirms the App Router pages, API routes, and TypeScript build are ready f
 - `.env.local`, `node_modules`, `.next`, and local logs are ignored from git
 - the repo currently keeps the `/profile` page in code even though it is no longer used in the host nav
 - the project works best outside OneDrive cache conflicts, but it can still be developed here with `npm run dev:reset` when needed
-
