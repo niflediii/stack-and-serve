@@ -457,31 +457,42 @@ export function applyHostEventActivePlayerReplacement(
     throw new Error("The replacement player could not be found in this queue.");
   }
 
-  const isReplacementAlreadyPlaying = normalizedEvent.activeCourtAssignments.some(
-    (entry) => entry.courtId !== courtId && entry.playerIds.includes(replacementPlayerId)
-  );
-
-  if (isReplacementAlreadyPlaying) {
-    throw new Error(`${replacementPlayer.name} is already playing on another court.`);
-  }
-
   if (assignment.playerIds.includes(replacementPlayerId)) {
     throw new Error(`${replacementPlayer.name} is already assigned to this court.`);
   }
 
+  // If the replacement is currently playing on another court, this is a two-way swap:
+  // the outgoing player takes the replacement's old spot on that other court.
+  const otherCourtAssignment = normalizedEvent.activeCourtAssignments.find(
+    (entry) => entry.courtId !== courtId && entry.playerIds.includes(replacementPlayerId)
+  );
+
+  const nextAssignments = normalizedEvent.activeCourtAssignments.map((entry) => {
+    if (entry.courtId === courtId) {
+      return {
+        ...entry,
+        playerIds: entry.playerIds.map((playerId) =>
+          playerId === currentPlayerId ? replacementPlayerId : playerId
+        ),
+      };
+    }
+
+    if (otherCourtAssignment && entry.courtId === otherCourtAssignment.courtId) {
+      return {
+        ...entry,
+        playerIds: entry.playerIds.map((playerId) =>
+          playerId === replacementPlayerId ? currentPlayerId : playerId
+        ),
+      };
+    }
+
+    return entry;
+  });
+
   return syncQueueLifecycle(
     normalizeHostEventRecord({
       ...normalizedEvent,
-      activeCourtAssignments: normalizedEvent.activeCourtAssignments.map((entry) =>
-        entry.courtId !== courtId
-          ? entry
-          : {
-              ...entry,
-              playerIds: entry.playerIds.map((playerId) =>
-                playerId === currentPlayerId ? replacementPlayerId : playerId
-              ),
-            }
-      ),
+      activeCourtAssignments: nextAssignments,
     })
   );
 }

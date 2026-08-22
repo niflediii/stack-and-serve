@@ -214,13 +214,18 @@ export function HostEventDetailClient({ eventId }: { eventId: string }) {
       return [];
     }
 
-    const activePlayerIds = new Set(event.activeCourtAssignments.flatMap((assignment) => assignment.playerIds));
+    const sameCourtPlayerIds = new Set(replacePlayerCourt?.players.map((player) => player.id) ?? []);
     const queuePositions = new Map(queue.map((entry) => [entry.id, entry.position]));
+    const courtByPlayerId = new Map(
+      event.activeCourtAssignments.flatMap((assignment) =>
+        assignment.playerIds.map((playerId) => [playerId, assignment.courtId] as const)
+      )
+    );
 
     return event.players
       .filter(
         (player) =>
-          player.id !== replacePlayerState.currentPlayerId && !activePlayerIds.has(player.id)
+          player.id !== replacePlayerState.currentPlayerId && !sameCourtPlayerIds.has(player.id)
       )
       .sort((left, right) => {
         const leftPosition = queuePositions.get(left.id) ?? Number.MAX_SAFE_INTEGER;
@@ -231,11 +236,18 @@ export function HostEventDetailClient({ eventId }: { eventId: string }) {
 
         return left.name.localeCompare(right.name);
       })
-      .map((player) => ({
-        ...player,
-        queuePosition: queuePositions.get(player.id) ?? event.players.length + 1,
-      }));
-  }, [event, queue, replacePlayerState]);
+      .map((player) => {
+        const activeOnCourtId = courtByPlayerId.get(player.id);
+
+        return {
+          ...player,
+          queuePosition: queuePositions.get(player.id) ?? event.players.length + 1,
+          sourceLabel: activeOnCourtId
+            ? `Playing on ${resolveCourtName(event, activeOnCourtId)}`
+            : `#${queuePositions.get(player.id) ?? event.players.length + 1} in queue • ${player.gamesPlayed} games`,
+        };
+      });
+  }, [event, queue, replacePlayerCourt, replacePlayerState]);
   const canAddCourt = Boolean(event);
   const isRosterFull = event ? event.players.length >= event.numberOfPlayers : false;
   const isWinLoseRotation = event?.rotation === "winLose";
@@ -530,6 +542,11 @@ export function HostEventDetailClient({ eventId }: { eventId: string }) {
       (player) => player.id === replacePlayerState.replacementPlayerId
     );
     const courtName = resolveCourtName(event, replacePlayerState.courtId);
+    const replacementOriginCourtId = event.activeCourtAssignments.find(
+      (assignment) =>
+        assignment.courtId !== replacePlayerState.courtId &&
+        assignment.playerIds.includes(replacePlayerState.replacementPlayerId)
+    )?.courtId;
 
     const nextEvent = await persistEventMutation((currentEvent, currentOwnerId) =>
       replaceActivePlayerOnOwnerHostQueue(
@@ -544,9 +561,13 @@ export function HostEventDetailClient({ eventId }: { eventId: string }) {
     if (nextEvent) {
       setReplacePlayerState(null);
       setSaveMessage(
-        `${replacementPlayer?.name ?? "Replacement player"} is now on ${courtName} in place of ${
-          currentPlayer?.name ?? "the selected player"
-        }.`
+        replacementOriginCourtId
+          ? `${replacementPlayer?.name ?? "Replacement player"} and ${
+              currentPlayer?.name ?? "the selected player"
+            } swapped courts.`
+          : `${replacementPlayer?.name ?? "Replacement player"} is now on ${courtName} in place of ${
+              currentPlayer?.name ?? "the selected player"
+            }.`
       );
       window.setTimeout(() => setSaveMessage(""), 2400);
     }
@@ -1141,7 +1162,7 @@ export function HostEventDetailClient({ eventId }: { eventId: string }) {
         {replacePlayerState && replacePlayerCourt && (
           <ModalShell
             title="Replace Playing Player"
-            subtitle="Swap out a player in this live matchup when someone is unavailable and bring in another player from the queue."
+            subtitle="Swap out a player in this live matchup for anyone else — from the queue or from another active court."
             onClose={() => setReplacePlayerState(null)}
             maxWidthClassName="max-w-2xl"
           >
@@ -1150,7 +1171,7 @@ export function HostEventDetailClient({ eventId }: { eventId: string }) {
                 {replacePlayerCourt.name}
               </p>
               <p className="mt-2 text-sm text-mist/60">
-                Only players who are not currently on another active court can be swapped in.
+                Picking a player who is already playing on another court trades the two of them — they swap spots.
               </p>
             </div>
 
@@ -1179,7 +1200,7 @@ export function HostEventDetailClient({ eventId }: { eventId: string }) {
                 </select>
               </Field>
 
-              <Field label="Replacement player from queue">
+              <Field label="Swap in">
                 <select
                   value={replacePlayerState.replacementPlayerId}
                   onChange={(nextEvent) =>
@@ -1195,11 +1216,11 @@ export function HostEventDetailClient({ eventId }: { eventId: string }) {
                   className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-mist outline-none focus:border-volt"
                 >
                   <option value="" className="bg-panel text-mist">
-                    Select a replacement player
+                    Select a player
                   </option>
                   {availableReplacementPlayers.map((player) => (
                     <option key={player.id} value={player.id} className="bg-panel text-mist">
-                      #{player.queuePosition} {player.name} • {player.gamesPlayed} games
+                      {player.name} • {player.sourceLabel}
                     </option>
                   ))}
                 </select>
@@ -1208,7 +1229,7 @@ export function HostEventDetailClient({ eventId }: { eventId: string }) {
 
             {availableReplacementPlayers.length === 0 && (
               <div className="mt-5 rounded-2xl border border-dashed border-white/10 bg-white/5 p-4 text-sm text-mist/55">
-                No waiting or resting players are available to swap in right now.
+                No other players are available to swap in right now.
               </div>
             )}
 
