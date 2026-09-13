@@ -457,8 +457,28 @@ export function applyHostEventActivePlayerReplacement(
     throw new Error("The replacement player could not be found in this queue.");
   }
 
+  // If the replacement is already on this same court, this swaps their two positions
+  // (e.g. moving them onto the other team) rather than being blocked as a no-op.
   if (assignment.playerIds.includes(replacementPlayerId)) {
-    throw new Error(`${replacementPlayer.name} is already assigned to this court.`);
+    const nextAssignments = normalizedEvent.activeCourtAssignments.map((entry) =>
+      entry.courtId !== courtId
+        ? entry
+        : {
+            ...entry,
+            playerIds: entry.playerIds.map((playerId) => {
+              if (playerId === currentPlayerId) return replacementPlayerId;
+              if (playerId === replacementPlayerId) return currentPlayerId;
+              return playerId;
+            }),
+          }
+    );
+
+    return syncQueueLifecycle(
+      normalizeHostEventRecord({
+        ...normalizedEvent,
+        activeCourtAssignments: nextAssignments,
+      })
+    );
   }
 
   // If the replacement is currently playing on another court, this is a two-way swap:

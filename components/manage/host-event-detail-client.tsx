@@ -214,7 +214,6 @@ export function HostEventDetailClient({ eventId }: { eventId: string }) {
       return [];
     }
 
-    const sameCourtPlayerIds = new Set(replacePlayerCourt?.players.map((player) => player.id) ?? []);
     const queuePositions = new Map(queue.map((entry) => [entry.id, entry.position]));
     const courtByPlayerId = new Map(
       event.activeCourtAssignments.flatMap((assignment) =>
@@ -223,10 +222,7 @@ export function HostEventDetailClient({ eventId }: { eventId: string }) {
     );
 
     return event.players
-      .filter(
-        (player) =>
-          player.id !== replacePlayerState.currentPlayerId && !sameCourtPlayerIds.has(player.id)
-      )
+      .filter((player) => player.id !== replacePlayerState.currentPlayerId)
       .sort((left, right) => {
         const leftPosition = queuePositions.get(left.id) ?? Number.MAX_SAFE_INTEGER;
         const rightPosition = queuePositions.get(right.id) ?? Number.MAX_SAFE_INTEGER;
@@ -242,12 +238,15 @@ export function HostEventDetailClient({ eventId }: { eventId: string }) {
         return {
           ...player,
           queuePosition: queuePositions.get(player.id) ?? event.players.length + 1,
-          sourceLabel: activeOnCourtId
-            ? `Playing on ${resolveCourtName(event, activeOnCourtId)}`
-            : `#${queuePositions.get(player.id) ?? event.players.length + 1} in queue • ${player.gamesPlayed} games`,
+          sourceLabel:
+            activeOnCourtId === replacePlayerState.courtId
+              ? "Playing on this court"
+              : activeOnCourtId
+              ? `Playing on ${resolveCourtName(event, activeOnCourtId)}`
+              : `#${queuePositions.get(player.id) ?? event.players.length + 1} in queue • ${player.gamesPlayed} games`,
         };
       });
-  }, [event, queue, replacePlayerCourt, replacePlayerState]);
+  }, [event, queue, replacePlayerState]);
   const canAddCourt = Boolean(event);
   const isRosterFull = event ? event.players.length >= event.numberOfPlayers : false;
   const isWinLoseRotation = event?.rotation === "winLose";
@@ -542,11 +541,11 @@ export function HostEventDetailClient({ eventId }: { eventId: string }) {
       (player) => player.id === replacePlayerState.replacementPlayerId
     );
     const courtName = resolveCourtName(event, replacePlayerState.courtId);
-    const replacementOriginCourtId = event.activeCourtAssignments.find(
-      (assignment) =>
-        assignment.courtId !== replacePlayerState.courtId &&
-        assignment.playerIds.includes(replacePlayerState.replacementPlayerId)
+    const replacementOriginCourtId = event.activeCourtAssignments.find((assignment) =>
+      assignment.playerIds.includes(replacePlayerState.replacementPlayerId)
     )?.courtId;
+    const isSameCourtSwap = replacementOriginCourtId === replacePlayerState.courtId;
+    const isCrossCourtSwap = Boolean(replacementOriginCourtId) && !isSameCourtSwap;
 
     const nextEvent = await persistEventMutation((currentEvent, currentOwnerId) =>
       replaceActivePlayerOnOwnerHostQueue(
@@ -561,10 +560,14 @@ export function HostEventDetailClient({ eventId }: { eventId: string }) {
     if (nextEvent) {
       setReplacePlayerState(null);
       setSaveMessage(
-        replacementOriginCourtId
+        isCrossCourtSwap
           ? `${replacementPlayer?.name ?? "Replacement player"} and ${
               currentPlayer?.name ?? "the selected player"
             } swapped courts.`
+          : isSameCourtSwap
+          ? `${replacementPlayer?.name ?? "Replacement player"} and ${
+              currentPlayer?.name ?? "the selected player"
+            } swapped positions on ${courtName}.`
           : `${replacementPlayer?.name ?? "Replacement player"} is now on ${courtName} in place of ${
               currentPlayer?.name ?? "the selected player"
             }.`
@@ -1171,7 +1174,7 @@ export function HostEventDetailClient({ eventId }: { eventId: string }) {
                 {replacePlayerCourt.name}
               </p>
               <p className="mt-2 text-sm text-mist/60">
-                Picking a player who is already playing on another court trades the two of them — they swap spots.
+                Picking a player who is already playing — on this court or another — trades the two of them, swapping their spots.
               </p>
             </div>
 
