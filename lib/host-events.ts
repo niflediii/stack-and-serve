@@ -591,7 +591,7 @@ export function deriveEventQueue(event: HostEventRecord) {
   const currentlyPlayingIds = new Set(
     syncedEvent.activeCourtAssignments.flatMap((assignment) => assignment.playerIds)
   );
-  const minGamesPlayed = Math.min(...syncedEvent.players.map((player) => player.gamesPlayed), 0);
+  const minGamesPlayed = getMinGamesPlayed(syncedEvent.players);
 
   const orderedPlayers = [...syncedEvent.players].sort((left, right) => {
     if (left.gamesPlayed !== right.gamesPlayed) return left.gamesPlayed - right.gamesPlayed;
@@ -919,6 +919,10 @@ function assignCourtsIfNeeded(
   });
 }
 
+// A player already this far ahead of the group's least-played player is benched from new
+// assignments until others catch up, even if they're the fairest of the currently-idle pool.
+const MAX_FAIRNESS_GAMES_GAP = 2;
+
 function getEligiblePlayers(
   players: HostQueuePlayer[],
   activePlayerIds: Set<string>,
@@ -931,8 +935,14 @@ function getEligiblePlayers(
   const preferredPlayers = availablePlayers.filter((player) => !excludedSet.has(player.id));
   const candidatePool =
     requiredCount > 0 && preferredPlayers.length >= requiredCount ? preferredPlayers : availablePlayers;
-  const waitingPlayers = candidatePool.filter((player) => player.status === "waiting");
-  const restingPlayers = candidatePool.filter((player) => player.status !== "waiting");
+
+  const minGamesPlayed = getMinGamesPlayed(players);
+  const fairCandidatePool = candidatePool.filter(
+    (player) => player.gamesPlayed - minGamesPlayed <= MAX_FAIRNESS_GAMES_GAP
+  );
+
+  const waitingPlayers = fairCandidatePool.filter((player) => player.status === "waiting");
+  const restingPlayers = fairCandidatePool.filter((player) => player.status !== "waiting");
 
   return [
     ...prioritizePlayers(waitingPlayers, seed),
@@ -964,6 +974,10 @@ function getUpcomingPlayersForAssignment(event: HostEventRecord) {
   return selectPlayersForUpcomingAssignment(event, eligiblePlayers, playersPerGame, seed).players;
 }
 
+function getMinGamesPlayed(players: HostQueuePlayer[]) {
+  return players.length > 0 ? Math.min(...players.map((player) => player.gamesPlayed)) : 0;
+}
+
 function shufflePlayers(players: HostQueuePlayer[], seed: number) {
   return [...players].sort((left, right) => {
     const leftHash = stableHash(`${left.id}-${seed}`);
@@ -975,7 +989,7 @@ function shufflePlayers(players: HostQueuePlayer[], seed: number) {
 function prioritizePlayers(players: HostQueuePlayer[], seed: number) {
   if (players.length === 0) return [];
 
-  const minGamesPlayed = Math.min(...players.map((player) => player.gamesPlayed), 0);
+  const minGamesPlayed = getMinGamesPlayed(players);
   const prioritizedPlayers = players.filter((player) => player.gamesPlayed === minGamesPlayed);
   const remainingPlayers = players.filter((player) => player.gamesPlayed !== minGamesPlayed);
 
@@ -1170,7 +1184,7 @@ function createMatchupSignature(playerIds: string[]) {
 
 function updateDerivedPlayerStatuses(event: HostEventRecord): HostEventRecord {
   const activePlayerIds = new Set(event.activeCourtAssignments.flatMap((assignment) => assignment.playerIds));
-  const minGamesPlayed = Math.min(...event.players.map((player) => player.gamesPlayed), 0);
+  const minGamesPlayed = getMinGamesPlayed(event.players);
 
   return {
     ...event,
