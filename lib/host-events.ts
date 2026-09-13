@@ -936,9 +936,12 @@ function getEligiblePlayers(
   const candidatePool =
     requiredCount > 0 && preferredPlayers.length >= requiredCount ? preferredPlayers : availablePlayers;
 
-  const minGamesPlayed = getMinGamesPlayed(players);
+  // A brand-new player (0 games played) shouldn't reset the fairness floor and lock out
+  // everyone who has already been playing -- only weigh experienced players against each other.
+  const experiencedPlayers = players.filter((player) => player.gamesPlayed > 0);
+  const fairnessFloor = getMinGamesPlayed(experiencedPlayers.length > 0 ? experiencedPlayers : players);
   const fairCandidatePool = candidatePool.filter(
-    (player) => player.gamesPlayed - minGamesPlayed <= MAX_FAIRNESS_GAMES_GAP
+    (player) => player.gamesPlayed - fairnessFloor <= MAX_FAIRNESS_GAMES_GAP
   );
 
   const waitingPlayers = fairCandidatePool.filter((player) => player.status === "waiting");
