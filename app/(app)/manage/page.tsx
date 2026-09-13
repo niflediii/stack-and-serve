@@ -170,7 +170,7 @@ export default function ManageDashboard() {
       location: "",
       eventDate: queueDate,
       time: formatTimeRange(startTime, endTime),
-      numberOfPlayers: playerNames.length,
+      numberOfPlayers,
       joinedCount: playerNames.length,
       skillFocus: "",
       genderGroup,
@@ -578,18 +578,7 @@ function FormField({
 }
 
 function sanitizePlayerNames(rawValue: string, expectedCount: number) {
-  const uniqueNames = parseUniquePlayerNames(rawValue);
-
-  if (uniqueNames.length >= expectedCount) {
-    return uniqueNames.slice(0, expectedCount);
-  }
-
-  const paddedNames = [...uniqueNames];
-  for (let index = uniqueNames.length; index < expectedCount; index += 1) {
-    paddedNames.push(`Player ${index + 1}`);
-  }
-
-  return paddedNames;
+  return parseUniquePlayerNames(rawValue).slice(0, expectedCount);
 }
 
 function parseUniquePlayerNames(rawValue: string) {
