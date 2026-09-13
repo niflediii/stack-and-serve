@@ -940,9 +940,7 @@ function getEligiblePlayers(
   // everyone who has already been playing -- only weigh experienced players against each other.
   const experiencedPlayers = players.filter((player) => player.gamesPlayed > 0);
   const fairnessFloor = getMinGamesPlayed(experiencedPlayers.length > 0 ? experiencedPlayers : players);
-  const fairCandidatePool = candidatePool.filter(
-    (player) => player.gamesPlayed - fairnessFloor <= MAX_FAIRNESS_GAMES_GAP
-  );
+  const fairCandidatePool = selectTightestFairCandidatePool(candidatePool, fairnessFloor, requiredCount);
 
   const waitingPlayers = fairCandidatePool.filter((player) => player.status === "waiting");
   const restingPlayers = fairCandidatePool.filter((player) => player.status !== "waiting");
@@ -951,6 +949,35 @@ function getEligiblePlayers(
     ...prioritizePlayers(waitingPlayers, seed),
     ...prioritizePlayers(restingPlayers, seed + 1),
   ];
+}
+
+// Enforces the games-gap cap as tightly as possible: starts at MAX_FAIRNESS_GAMES_GAP and only
+// widens it -- one game at a time -- just far enough to reach a full team, never further than
+// that. This keeps fairness as strict as the current player pool allows without ever permanently
+// deadlocking a court (which a fixed, non-widening cap can do once the group's spread grows past
+// the cap on both sides of the required headcount).
+function selectTightestFairCandidatePool(
+  candidatePool: HostQueuePlayer[],
+  fairnessFloor: number,
+  requiredCount: number
+) {
+  if (requiredCount <= 0) {
+    return candidatePool.filter((player) => player.gamesPlayed - fairnessFloor <= MAX_FAIRNESS_GAMES_GAP);
+  }
+
+  const maxGap = candidatePool.reduce(
+    (highestGap, player) => Math.max(highestGap, player.gamesPlayed - fairnessFloor),
+    MAX_FAIRNESS_GAMES_GAP
+  );
+
+  for (let gap = MAX_FAIRNESS_GAMES_GAP; gap <= maxGap; gap += 1) {
+    const withinGap = candidatePool.filter((player) => player.gamesPlayed - fairnessFloor <= gap);
+    if (withinGap.length >= requiredCount) {
+      return withinGap;
+    }
+  }
+
+  return candidatePool;
 }
 
 function getUpcomingPlayersForAssignment(event: HostEventRecord) {
