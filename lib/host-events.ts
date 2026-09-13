@@ -878,7 +878,10 @@ function assignCourtsIfNeeded(
   const playersPerGame = event.playFormat === "single" ? 2 : 4;
   const activePlayerIds = new Set(event.activeCourtAssignments.flatMap((assignment) => assignment.playerIds));
   const nextAssignments = [...event.activeCourtAssignments];
-  const randomSeed = Date.now();
+  // Deterministic (not wall-clock-based) so the same event state always produces the same
+  // assignment -- this is also what lets the "Upcoming Matchup" preview match what actually
+  // gets assigned, since it computes this same seed ahead of time.
+  const randomSeed = buildRotationSeed(event);
 
   for (const court of event.courts) {
     const alreadyActive = nextAssignments.some((assignment) => assignment.courtId === court.id);
@@ -985,11 +988,10 @@ function getUpcomingPlayersForAssignment(event: HostEventRecord) {
 
   const playersPerGame = event.playFormat === "single" ? 2 : 4;
   const activePlayerIds = new Set(event.activeCourtAssignments.flatMap((assignment) => assignment.playerIds));
-  const seed = stableHash(
-    `${event.id}-${event.completedGames.length}-${event.players
-      .map((player) => `${player.id}:${player.gamesPlayed}:${player.status}`)
-      .join("|")}`
-  );
+  // Matches the seed assignCourtsIfNeeded will use for the next court it assigns (its seed is
+  // offset by the count of already-active assignments at that point), so this preview lines up
+  // with the real matchup instead of just forecasting the same 4 names in a different pairing.
+  const seed = buildRotationSeed(event) + event.activeCourtAssignments.length;
 
   const eligiblePlayers = getEligiblePlayers(
     event.players,
@@ -1264,6 +1266,14 @@ function calculateElapsedQueueMs(event: HostEventRecord, now = Date.now()) {
       : 0;
 
   return Math.max(0, now - startedAtMs - event.totalPausedMs - pausedWindowMs);
+}
+
+function buildRotationSeed(event: HostEventRecord) {
+  return stableHash(
+    `${event.id}-${event.completedGames.length}-${event.players
+      .map((player) => `${player.id}:${player.gamesPlayed}:${player.status}`)
+      .join("|")}`
+  );
 }
 
 function stableHash(value: string) {
