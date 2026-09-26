@@ -896,9 +896,8 @@ function assignCourtsIfNeeded(
     );
     if (eligiblePlayers.length < playersPerGame) continue;
 
-    const matchSelection = selectPlayersForCourt(
+    const matchSelection = selectPlayersForNextAssignment(
       event,
-      court.id,
       eligiblePlayers,
       playersPerGame,
       randomSeed + nextAssignments.length
@@ -988,10 +987,11 @@ function getUpcomingPlayersForAssignment(event: HostEventRecord) {
 
   const playersPerGame = event.playFormat === "single" ? 2 : 4;
   const activePlayerIds = new Set(event.activeCourtAssignments.flatMap((assignment) => assignment.playerIds));
-  // Matches the seed assignCourtsIfNeeded will use for the next court it assigns (its seed is
-  // offset by the count of already-active assignments at that point), so this preview lines up
-  // with the real matchup instead of just forecasting the same 4 names in a different pairing.
-  const seed = buildRotationSeed(event) + event.activeCourtAssignments.length;
+  // Matches the seed assignCourtsIfNeeded will use for the next court it assigns. That seed is
+  // offset by how many *other* courts are still active at the moment one court's game completes
+  // -- by then, the completing court's own assignment has already been removed from the active
+  // list, so its offset is one less than the count of currently-active courts right now.
+  const seed = buildRotationSeed(event) + Math.max(0, event.activeCourtAssignments.length - 1);
 
   const eligiblePlayers = getEligiblePlayers(
     event.players,
@@ -1003,7 +1003,7 @@ function getUpcomingPlayersForAssignment(event: HostEventRecord) {
 
   if (eligiblePlayers.length < playersPerGame) return [];
 
-  return selectPlayersForUpcomingAssignment(event, eligiblePlayers, playersPerGame, seed).players;
+  return selectPlayersForNextAssignment(event, eligiblePlayers, playersPerGame, seed).players;
 }
 
 function getMinGamesPlayed(players: HostQueuePlayer[]) {
@@ -1145,50 +1145,25 @@ function selectPlayersForWinLoseRotation(
   };
 }
 
-function selectPlayersForCourt(
-  event: HostEventRecord,
-  courtId: string,
-  eligiblePlayers: HostQueuePlayer[],
-  playersPerGame: number,
-  seed: number
-): MatchSelection {
-  const recentMatchupSignatures = new Set(
-    event.completedGames
-      .filter((game) => game.courtId === courtId)
-      .slice(-8)
-      .map((game) => createMatchupSignature(game.playerIds))
-  );
-
-  if (event.rotation === "winLose") {
-    return selectPlayersForWinLoseRotation(
-      eligiblePlayers,
-      playersPerGame,
-      recentMatchupSignatures,
-      seed
-    );
-  }
-
-  return {
-    players: selectPlayersAvoidingRecentMatchups(
-      eligiblePlayers,
-      playersPerGame,
-      recentMatchupSignatures
-    ),
-    matchGroup: "standard",
-  };
-}
-
-function selectPlayersForUpcomingAssignment(
-  event: HostEventRecord,
-  eligiblePlayers: HostQueuePlayer[],
-  playersPerGame: number,
-  seed: number
-): MatchSelection {
-  const recentMatchupSignatures = new Set(
+// Shared by both the real assignment and the "Upcoming Matchup" preview, so they run the exact
+// same calculation given the exact same event state -- avoiding recent matchups anywhere in the
+// queue (not just on one specific court), since the preview can't know in advance which court
+// will free up next and thus can't apply a court-specific history the way the old logic did.
+function buildRecentMatchupSignatures(event: HostEventRecord) {
+  return new Set(
     event.completedGames
       .slice(-12)
       .map((game) => createMatchupSignature(game.playerIds))
   );
+}
+
+function selectPlayersForNextAssignment(
+  event: HostEventRecord,
+  eligiblePlayers: HostQueuePlayer[],
+  playersPerGame: number,
+  seed: number
+): MatchSelection {
+  const recentMatchupSignatures = buildRecentMatchupSignatures(event);
 
   if (event.rotation === "winLose") {
     return selectPlayersForWinLoseRotation(
