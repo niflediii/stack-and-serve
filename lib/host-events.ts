@@ -1087,8 +1087,30 @@ function selectPlayersForWinLoseRotation(
     seed + 2
   );
 
+  // Never-played players always get folded in the moment there are enough people to fill a
+  // court around them -- even if that means mixing in winners/losers to round out the group.
+  // Otherwise a small "unplayed" pool (smaller than a full court) never wins its own bracket,
+  // and since the winners/losers pools are almost always big enough alone once a few games have
+  // run, those never-played players get skipped forever no matter how many more games complete.
+  if (unplayedPlayers.length > 0) {
+    const unplayedPool = [
+      ...unplayedPlayers,
+      ...prioritizePlayersForWinLose([...winnersGroup, ...losersGroup], seed + 3),
+    ];
+
+    if (unplayedPool.length >= playersPerGame) {
+      return {
+        players: selectPlayersAvoidingRecentMatchups(
+          unplayedPool,
+          playersPerGame,
+          recentMatchupSignatures
+        ),
+        matchGroup: unplayedPlayers.length >= playersPerGame ? "unplayed" : "fallback-mixed",
+      };
+    }
+  }
+
   const groupedPools: Array<{ players: HostQueuePlayer[]; matchGroup: QueueMatchGroup }> = [
-    { players: unplayedPlayers, matchGroup: "unplayed" },
     { players: winnersGroup, matchGroup: "winners" },
     { players: losersGroup, matchGroup: "losers" },
   ];
@@ -1108,10 +1130,7 @@ function selectPlayersForWinLoseRotation(
     };
   }
 
-  const fallbackPool = [
-    ...unplayedPlayers,
-    ...prioritizePlayersForWinLose([...winnersGroup, ...losersGroup], seed + 3),
-  ];
+  const fallbackPool = [...winnersGroup, ...losersGroup];
 
   return {
     players:
